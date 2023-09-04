@@ -102,7 +102,6 @@ void rbtree_insert_fixup(rbtree *t, node_t *z) {
           if (z == z->parent->right) {            // 타켓이 오른쪽 자식이면
             z = z->parent;                        // 타켓을 그 부모로 바꾸고
             left_rotation(t, z);                  // left 로테이션 고고
-
         }
       }
     }
