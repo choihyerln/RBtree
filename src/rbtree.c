@@ -5,7 +5,6 @@
 // 초기화
 rbtree *new_rbtree(void) {
   rbtree *t = (rbtree *)calloc(1, sizeof(rbtree));  // 트리 생성
-  // TODO: initialize struct if needed
   node_t *nil_node = (node_t*)calloc(1, sizeof(node_t));  // nil 노드 생성
   nil_node->color = RBTREE_BLACK;   // 모든 리프 노드는 검정색
   t->nil = nil_node;      // T.nil
@@ -86,49 +85,124 @@ void right_rotation(rbtree *t, node_t *x) {
   return;
 }
 
-// insert_fixup
+// insert_fixup (색 변경)
 void rbtree_insert_fixup(rbtree *t, node_t *z) {
-  while (z->parent->color == RBTREE_RED)    // z의 부모가 red (double red)
-  // CASE 1. 현재 노드의 삼촌, 부모가 red + 할아범 black: 회전 안 함!
+  while (z->parent->color == RBTREE_RED)  {  // z의 부모가 red (double red)
+  
     if (z->parent==z->parent->parent->left) {
       node_t *uncle = z->parent->parent->right;
+      // CASE 1 = 부모 R + 삼촌 R
       if (uncle->color == RBTREE_RED) {     // 삼촌 레드일 때
+        z->parent->color = RBTREE_BLACK;
+        uncle->color = RBTREE_BLACK;
+        z->parent->parent->color = RBTREE_RED;
+        z = z->parent->parent;    // 조상은 무조건 red, red여야 while문 돈다!
+      }
+      else if (uncle->color == RBTREE_BLACK) {    // 삼촌 블랙일 때
+          // CASE 2-(1) = 꺾새 모양일 때
+          if (z == z->parent->right) {            // 타켓이 오른쪽 자식이면
+            z = z->parent;                        // 타켓을 그 부모로 바꾸고
+            left_rotation(t, z);                  // left 로테이션 고고
+          }
+          // CASE 2-(2) = 일렬일 때
+          z->parent->color = RBTREE_BLACK;
+          z->parent->parent->color = RBTREE_RED;
+          right_rotation(t, z->parent->parent);   // 조상 기준 우회전
+      }
+    }
+    // z의 부모가 z조상의 오른쪽이면 위의 과정 반대로 하면 됨
+    else if (z->parent==z->parent->parent->right) {
+      node_t *uncle = z->parent->parent->left;
+      // CASE 1 = 부모 R + 삼촌 R
+      if (uncle->color == RBTREE_RED) {
         z->parent->color = RBTREE_BLACK;
         uncle->color = RBTREE_BLACK;
         z->parent->parent->color = RBTREE_RED;
         z = z->parent->parent;
       }
-      else if (uncle->color == RBTREE_BLACK) {    // 삼촌 블랙일 때
-          if (z == z->parent->right) {            // 타켓이 오른쪽 자식이면
-            z = z->parent;                        // 타켓을 그 부모로 바꾸고
-            left_rotation(t, z);                  // left 로테이션 고고
+      else if (uncle->color == RBTREE_BLACK) {
+        // CASE 2-(1) = 꺾새 모양일 때
+        if (z == z->parent->left) {
+          z = z->parent;
+          right_rotation(t, z);
         }
+        z->parent->color = RBTREE_BLACK;
+        z->parent->parent->color = RBTREE_RED;
+        left_rotation(t, z->parent->parent);
       }
     }
-  {
-    /* code */
-  }
-  
-}
+  } // while문 종료
+  t->root->color = RBTREE_BLACK;    // root는 항상 black
+  return;   // void형
+} 
 
+// 데이터 삽입
 node_t *rbtree_insert(rbtree *t, const key_t key) {
-  // TODO: implement insert
+  node_t *x = t->root;    // 트리의 루트 노드
+  node_t *y = t->nil;     // 트리의 nil 노드
+
+  while (x != t->nil) {   // x가 리프노드에 도달할 때까지 반복
+    y = x;    // tmp 역할 (nil을 만나기 직전노드의 값에 z를 넣어줘야돼서 y에 저장)
+    if (key < x->key)    // 만약 x의 key값보다 삽입할 key값이 작으면
+      x = x->left;       // x를 x의 왼쪽으로 변경
+    else    // 만약 x의 key값보다 삽입할 key값이 크거나 같으면
+      x = x->right;     // x를 x의 오른쪽으로 변경
+  }
+
+  // while문 종료 = x가 nil을 가리킴 -> new_node(z) 삽입할 시기
+  node_t *z = (node_t*)calloc(1, sizeof(node_t)); // z 노드 생성
+  z->key = key;   // z의 키값을 넣어줌
+
+  z->parent = y;  // z의 부모는 미리 저장해놓은 y
+  if (y == t->nil)  // y가 트리의 nil = 비어있던 애
+    t->root = z;    // 루트는 z
+
+  else if (z->key < y->key)   // y의 key값이 z의 key값보다 크면
+    y->left = z;    // z는 y의 왼쪽 자식
+
+  else    // y의 key값이 z의 key값보다 작거나 같으면
+    y->right = z;   // z는 y의 오른쪽 자식
+
+  z->left = t->nil;   // z의 왼쪽 자식 nil
+  z->right = t->nil;  // z의 오른쪽 자식 nil
+  z->color = RBTREE_RED;  // new_node는 늘 red
+
+  rbtree_insert_fixup(t, z);
+
   return t->root;
 }
 
 node_t *rbtree_find(const rbtree *t, const key_t key) {
-  // TODO: implement find
-  return t->root;
+  node_t *x = t->root;    // root에서부터 검색 시작
+
+  while (x != t->nil && key != x->key) {
+    if (key < x->key)
+      x = x->left;
+    else
+      x = x->right;
+  }
+  if (x == t->nil)
+    return NULL;
+
+  return x;
 }
 
+// 트리의 최소값
 node_t *rbtree_min(const rbtree *t) {
-  // TODO: implement find
-  return t->root;
+  node_t *x = t->root;    // 루트부터 시작
+  while (x->left != t->nil) {   // x의 왼쪽자식이 nil이 아닐 때
+    x = x->left;    // 왼쪽으로 계속 이동
+  }
+  return x; // 왼쪽 자식 nil이면 그게 최소값
 }
 
+// 트리의 최대값
 node_t *rbtree_max(const rbtree *t) {
-  // TODO: implement find
-  return t->root;
+  node_t *x = t->root;    // 루트부터 시작
+  while (x->right != t->nil) {    // 오른쪽 자식이 nil이 아닐 때 
+    x = x->right;     // 오른쪽으로 계속 이동 
+  }
+  return x;   // 오른쪽 자식 nil이면 그게 최대값
 }
 
 int rbtree_erase(rbtree *t, node_t *p) {
