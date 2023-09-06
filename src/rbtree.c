@@ -205,12 +205,156 @@ node_t *rbtree_max(const rbtree *t) {
   return x;   // 오른쪽 자식 nil이면 그게 최대값
 }
 
-int rbtree_erase(rbtree *t, node_t *p) {
-  // TODO: implement erase
+// 후계자 찾는 함수 (오른쪽 min값)
+node_t *find_successor(rbtree *t, node_t *x) {
+  node_t *succ = x;   // x의 후계자
+  while (succ->left != t->nil) {
+    succ = succ->left;
+  }
+  return succ;
+}
+
+// 삭제할 노드를 떼어내고 후계자 붙이는 함수
+void rb_transplant(rbtree *t, node_t *target, node_t *succ) {
+  if (target->parent == t->nil)
+    t->root = succ;
+  else if (target == target->parent->left)
+    target->parent->left = succ;
+  else
+    target->parent->right = succ;
+  succ->parent = target->parent;
+  return;
+}
+
+void rbtree_erase_fixup(rbtree *t, node_t *x) {
+  node_t *w;
+  while (x != t->root && x->color == RBTREE_BLACK) {
+    // 기준이 되는 노드가 왼쪽일 때
+    if (x == x->parent->left) {
+      w = x->parent->right;
+      // CASE 1: w 레드
+      if (w->color == RBTREE_RED) {
+        w->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_RED;
+        left_rotation(t, x->parent);
+        w = x->parent->right;
+      }
+      // CASE 2: w 블랙, w의 두 자녀 블랙
+      if ((w->left->color == RBTREE_BLACK) && (w->right->color == RBTREE_BLACK)) {
+        w->color = RBTREE_RED;
+        x = x->parent;
+      }
+      // CASE 3: 꺾새 모양 w의 왼쪽 자녀 red, 오른쪽 자녀 black
+      else {
+        if (w->right->color == RBTREE_BLACK) {
+          w->left->color = RBTREE_BLACK;
+          w->color = RBTREE_RED;
+          right_rotation(t, w);
+          w = x->parent->right;
+        }
+        // CASE 4: 일렬 (최종)
+        w->color = x->parent->color;
+        w->right->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_BLACK;
+        left_rotation(t, x->parent);
+        x = t->root; // while 종료 조건
+      }
+    }
+    // 기준이 되는 노드가 오른쪽일 때
+    else if (x == x->parent->right) {
+      w = x->parent->left;
+      // CASE 1: w 레드
+      if (w->color == RBTREE_RED) {
+        w->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_RED;
+        right_rotation(t, x->parent);
+        w = x->parent->left;
+      }
+      // CASE 2: w 블랙, w의 두 자녀 블랙
+      if ((w->left->color == RBTREE_BLACK) && (w->right->color == RBTREE_BLACK)) {
+        w->color = RBTREE_RED;
+        x = x->parent;
+      }
+      // CASE 3: 꺾새 모양 w의 오른쪽 자녀 red, 왼쪽자녀 black
+      else {
+        if (w->left->color == RBTREE_BLACK) {
+          w->right->color = RBTREE_BLACK;
+          w->color = RBTREE_RED;
+          left_rotation(t, w);
+          w = x->parent->left;
+        }
+        // CASE 4: 일렬 (최종)
+        w->color = x->parent->color;
+        w->left->color = RBTREE_BLACK;
+        x->parent->color = RBTREE_BLACK;
+        right_rotation(t, x->parent);
+        x = t->root;
+      }
+    }
+  }
+  x->color = RBTREE_BLACK;
+  return;
+}
+
+int rbtree_erase(rbtree *t, node_t *target) {
+  node_t *p = target;   // 삭제할 노드를 p에 복사하여 포인터처럼 활용
+  color_t target_original_color = p->color;    // 지워질 노드의 색을 변수에 저장
+  node_t *x;    // succ의 값의 자리를 저장해두는 포인터, fixup의 기준이 될 노드
+
+  if (target->left == t->nil) {   // 왼쪽 자식이 없을 때
+    x = target->right; // 정보 저장
+    rb_transplant(t, target, target->right);
+  }
+
+  else if (target->right == t->nil) { // 오른쪽 자식이 없을 때
+    x = target->left;    // 정보 저장
+    rb_transplant(t, target, target->left);
+  }
+
+  else { // 자식 둘 다 있을 때
+    p = find_successor(t, target->right);    // x
+    target_original_color =  p->color;  // x color
+    x = p->right;    // nil or 값 있을수도
+
+    if (p->parent == target)
+      x->parent = p;   // succ가 nil인 경우는 nil의 부모는 설정되지 않기 때문에 따로 지정해줘야함
+    else {   // p의 부모가 삭제할 노드가 아닐 때
+      rb_transplant(t, p, p->right);   // 타겟의 부모노드를 p의 오른쪽 자식과 연결
+      p->right = target->right;   // 삭제할 노드의 오른 자식을 p의 오른쪽 자식으로 붙여줌
+      p->right->parent = p;   // 부모도 p로 설정
+    }
+    rb_transplant(t, target, p);
+    p->left = target->left;
+    p->left->parent = p;
+    p->color = target->color;
+  }
+  free(target);    // 할당 해제
+  target = NULL;   // 누수 방지
+  if (target_original_color == RBTREE_BLACK)  // 블랙 제거하면 5번특성 위반
+    rbtree_erase_fixup(t, x);    // fixup 함수 호출
   return 0;
 }
 
+// 트리 중위순회 함수
+int rbtree_inorder(node_t *nil, node_t *root, key_t *arr, const size_t n, int index) {
+  if (root == nil)
+    return index;
+  
+  // 재귀 종료 조건
+  if (index == n)
+    return index;
+  
+  index = rbtree_inorder(nil, root->left, arr, n, index); // 왼쪽 자식으로 재귀
+  if (index < n)
+    arr[index++] = root->key;   // arr[현재 인덱스] = 현재 노드의 key값
+  index = rbtree_inorder(nil, root->right, arr, n, index); // 오른쪽 자식으로 재귀
+  return index;
+}
+
+// 오름차순 arr
 int rbtree_to_array(const rbtree *t, key_t *arr, const size_t n) {
-  // TODO: implement to_array
+  if (t->root == t->nil)    // 트리의 루트가 nil이면 반환
+    return 0;
+  rbtree_inorder(t->nil, t->root, arr, n, 0);   // 중위 순회
   return 0;
 }
